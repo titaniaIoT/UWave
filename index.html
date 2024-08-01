@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bluetooth Connection</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+    <h1 class="text-2xl font-bold mb-4">Bluetooth Connection</h1>
+    <div>
+        <button id="btnOn" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-700">On</button>
+        <button id="btnOff" class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-700">Off</button>
+    </div>
+    <table class="table-auto mt-6 w-4/5">
+        <thead>
+            <tr class="bg-gray-700 text-white">
+                <th class="px-4 py-2 text-center">Device Name</th>
+                <th class="px-4 py-2 text-center">Action</th>
+            </tr>
+        </thead>
+        <tbody id="deviceList">
+        </tbody>
+    </table>
+    <div id="output" class="mt-4 text-lg font-semibold"></div>
+    <script>
+        const btnOn = document.getElementById('btnOn');
+        const btnOff = document.getElementById('btnOff');
+        const deviceList = document.getElementById('deviceList');
+        const output = document.getElementById('output');
+        let connectedDevice = null;
+        let characteristic = null;
+
+        btnOn.addEventListener('click', () => {
+            navigator.bluetooth.requestDevice({ 
+                acceptAllDevices: true,
+                optionalServices: ['7eafd361-f150-4785-b307-47d34ed52c3c']
+            })
+            .then(device => {
+                const row = document.createElement('tr');
+                const cellName = document.createElement('td');
+                cellName.classList.add('border', 'px-4', 'py-2', 'text-center');
+                cellName.textContent = device.name || 'Unknown Device';
+
+                const cellAction = document.createElement('td');
+                cellAction.classList.add('border', 'px-4', 'py-2', 'text-center');
+                const connectButton = document.createElement('button');
+                connectButton.classList.add('px-4', 'py-2', 'bg-green-500', 'text-white', 'rounded', 'hover:bg-green-700');
+                connectButton.textContent = 'Connect';
+                connectButton.addEventListener('click', () => connectToDevice(device, connectButton));
+                cellAction.appendChild(connectButton);
+                
+                row.appendChild(cellName);
+                row.appendChild(cellAction);
+                deviceList.appendChild(row);
+            })
+            .catch(error => console.log('Error: ', error));
+        });
+
+        btnOff.addEventListener('click', () => {
+            if (connectedDevice && connectedDevice.gatt.connected) {
+                connectedDevice.gatt.disconnect();
+                connectedDevice = null;
+                characteristic = null;
+                deviceList.innerHTML = '';
+                output.textContent = '';
+            }
+        });
+
+        function connectToDevice(device, button) {
+            const loader = document.createElement('span');
+            loader.classList.add('loader', 'ml-2');
+            loader.textContent = '⏳';
+            const tick = document.createElement('span');
+            tick.classList.add('tick', 'ml-2');
+            tick.textContent = '✔️';
+            button.textContent = 'Connecting';
+            button.appendChild(loader);
+            loader.style.display = 'inline';
+            device.gatt.connect()
+                .then(server => {
+                    loader.style.display = 'none';
+                    tick.style.display = 'inline';
+                    button.textContent = 'Connected';
+                    button.appendChild(tick);
+                    connectedDevice = device;
+                    return server.getPrimaryService('7eafd361-f150-4785-b307-47d34ed52c3c');
+                })
+                .then(service => {
+                    return service.getCharacteristic('7eafd361-f151-4785-b307-47d34ed52c3c');
+                })
+                .then(char => {
+                    characteristic = char;
+                    return characteristic.startNotifications().then(_ => {
+                        characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
+                    });
+                })
+                .catch(error => {
+                    loader.style.display = 'none';
+                    button.textContent = 'Connect';
+                    console.log('Connection failed: ', error);
+                });
+        }
+        function handleCharacteristicValueChanged(event) {
+            let value = event.target.value;
+            let data = [];
+            for (let i = 0; i < value.byteLength; i++) {
+                data.push(value.getUint8(i));
+            }
+            console.log('Các giá trị byte:', data);
+            let hexString = data.map(byte => byte.toString(16).padStart(2, '0')).join('-');
+            console.log('Dữ liệu đo được:', hexString);
+            let byte4 = data[3];
+            let byte5 = data[4];
+            let reversedHex = ((byte5 << 8) | byte4).toString(16).padStart(4, '0');
+            let measurementValue = parseInt(reversedHex, 16);
+            if (measurementValue & 0x8000) {
+                measurementValue = measurementValue - 0x10000;
+            }
+            measurementValue = measurementValue / 100;
+            output.textContent = `Giá trị đo lường: ${measurementValue}`;
+        }
+    </script>
+</body>
+</html>
