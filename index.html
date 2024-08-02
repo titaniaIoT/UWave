@@ -33,8 +33,10 @@
 
         btnOn.addEventListener('click', () => {
             navigator.bluetooth.requestDevice({ 
-                acceptAllDevices: true,
-                optionalServices: ['7eafd361-f150-4785-b307-47d34ed52c3c']
+                filters: [
+                    { services: ["7eafd361-f150-4785-b307-47d34ed52c3c"] },
+                    { name: "UWAVE" },
+                ],
             })
             .then(device => {
                 const row = document.createElement('tr');
